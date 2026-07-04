@@ -4,7 +4,7 @@ mod extraction;
 use crate::server::LspServerStateSnapshot;
 use alignment::{
     apply_indent_normalization_to_remaining_lines, generate_currency_column_edits,
-    generate_template_edits,
+    generate_decimal_column_edits, generate_template_edits,
 };
 use anyhow::Result;
 use extraction::{calculate_format_config, extract_formateable_lines};
@@ -15,7 +15,7 @@ use tracing::debug;
 /// This function recreates bean-format's behavior exactly:
 /// 1. Extracts formateable lines using tree-sitter (instead of regex)
 /// 2. Calculates alignment widths like bean-format
-/// 3. Applies bean-format's formatting template or currency column logic
+/// 3. Applies bean-format's formatting template or currency/decimal column logic
 /// 4. Generates minimal text edits for the changes
 pub(crate) fn formatting(
     snapshot: LspServerStateSnapshot,
@@ -68,6 +68,13 @@ pub(crate) fn formatting(
             generate_currency_column_edits(
                 &formateable_lines,
                 currency_col,
+                doc,
+                snapshot.config.formatting.indent_width,
+            )
+        } else if let Some(decimal_col) = snapshot.config.formatting.decimal_column {
+            generate_decimal_column_edits(
+                &formateable_lines,
+                decimal_col,
                 doc,
                 snapshot.config.formatting.indent_width,
             )
@@ -507,6 +514,7 @@ mod tests {
             prefix_width: Some(30),
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: None,
@@ -550,6 +558,7 @@ mod tests {
             prefix_width: None,
             num_width: Some(12),
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: None,
@@ -596,6 +605,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: Some(50),
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: None,
@@ -620,6 +630,75 @@ mod tests {
     }
 
     #[test]
+    fn test_bean_format_decimal_column_alignment() {
+        let content = r#"2020-01-11 * "Sam's Club" "food"
+    Liabilities:AmEx:Gold                     -34.52 USD
+    Expenses:Food:Groceries                    34.52 USD
+"#;
+
+        let format_config = crate::config::FormattingConfig {
+            prefix_width: None,
+            num_width: None,
+            currency_column: None,
+            decimal_column: Some(45),
+            account_amount_spacing: 2,
+            number_currency_spacing: 1,
+            indent_width: None,
+        };
+
+        let state = TestState::new_with_config(content, format_config).unwrap();
+        let edits = state.format().unwrap().unwrap();
+        let formatted = apply_edits(content, &edits);
+
+        // Verify that decimal points '.' are aligned at column 45
+        let lines: Vec<&str> = formatted.lines().collect();
+        for line in &lines[1..] {
+            if let Some(dot_pos) = line.find('.') {
+                assert_eq!(
+                    dot_pos, 45,
+                    "Decimal point should be aligned at column 45, but found at {dot_pos}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_bean_format_decimal_column_with_integers_and_negatives() {
+        let content = r#"2020-01-11 * "Test"
+    Assets:Bank                               1000 USD
+    Liabilities:Credit                       -34.52 USD
+    Expenses:Food                            34.52 USD
+"#;
+
+        let format_config = crate::config::FormattingConfig {
+            prefix_width: None,
+            num_width: None,
+            currency_column: None,
+            decimal_column: Some(45),
+            account_amount_spacing: 2,
+            number_currency_spacing: 1,
+            indent_width: None,
+        };
+
+        let state = TestState::new_with_config(content, format_config).unwrap();
+        let edits = state.format().unwrap().unwrap();
+        let formatted = apply_edits(content, &edits);
+
+        let lines: Vec<&str> = formatted.lines().collect();
+        // Line 2 (Liabilities:Credit): '.' at column 45
+        let dot_pos_credit = lines[2].find('.').unwrap();
+        assert_eq!(dot_pos_credit, 45);
+
+        // Line 3 (Expenses:Food): '.' at column 45
+        let dot_pos_food = lines[3].find('.').unwrap();
+        assert_eq!(dot_pos_food, 45);
+
+        // Line 1 (Assets:Bank 1000 USD): virtual decimal point right after 1000, so '1000' ends at column 45
+        let num_end = lines[1].find("1000").unwrap() + 4;
+        assert_eq!(num_end, 45);
+    }
+
+    #[test]
     fn test_bean_format_combined_options() {
         let content = r#"2023-01-01 * "Test transaction"
   Assets:Cash     100.00 USD
@@ -632,6 +711,7 @@ mod tests {
             prefix_width: Some(25),
             num_width: None,
             currency_column: Some(40),
+            decimal_column: None,
             account_amount_spacing: 3,
             number_currency_spacing: 1,
             indent_width: None,
@@ -667,6 +747,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 5,
             number_currency_spacing: 1,
             indent_width: None,
@@ -716,6 +797,7 @@ mod tests {
             prefix_width: Some(35),
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: None,
@@ -770,6 +852,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 2,
             indent_width: None,
@@ -815,6 +898,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 0,
             indent_width: None,
@@ -851,6 +935,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: None,
@@ -900,6 +985,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: None,
@@ -967,6 +1053,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2, // Should have at least 2 spaces
             number_currency_spacing: 1,
             indent_width: None,
@@ -1174,6 +1261,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: Some(30),
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: None,
@@ -1224,6 +1312,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: Some(4),
@@ -1268,6 +1357,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: Some(2),
@@ -1308,6 +1398,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: Some(2),
@@ -1463,6 +1554,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: Some(50),
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: None,
@@ -1508,6 +1600,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: Some(50),
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: None,
@@ -1778,6 +1871,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: Some(2),
@@ -1823,6 +1917,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: Some(40),
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: Some(2),
@@ -1861,6 +1956,7 @@ mod tests {
             prefix_width: None,
             num_width: None,
             currency_column: Some(40),
+            decimal_column: None,
             account_amount_spacing: 2,
             number_currency_spacing: 1,
             indent_width: Some(2),

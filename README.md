@@ -16,7 +16,7 @@ A [Language Server Protocol](https://microsoft.github.io/language-server-protoco
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------ |
 | **Completions**           | Smart autocompletion for accounts, payees, dates, narration, tags, links, and transaction types                          | ✅     |
 | **Diagnostics**           | Real-time error checking and validation via beancount Python integration                                                 | ✅     |
-| **Formatting**            | Document formatting compatible with `bean-format`, with support for prefix-width, num-width, and currency-column options | ✅     |
+| **Formatting**            | Document formatting compatible with `bean-format`, with support for prefix-width, num-width, currency-column, and decimal-column options | ✅     |
 | **Rename**                | Rename symbols across files                                                                                              | ✅     |
 | **References**            | Find all references to accounts, payees, etc.                                                                            | ✅     |
 | **Semantic Highlighting** | Advanced syntax highlighting with semantic information                                                                   | ✅     |
@@ -419,12 +419,13 @@ This completely disables warnings for flagged transactions.
 | `prefix_width`            | number | Fixed width for account names (overrides auto-detection)    | Auto-calculated    | `--prefix-width` (`-w`)    |
 | `num_width`               | number | Fixed width for number alignment (overrides auto-detection) | Auto-calculated    | `--num-width` (`-W`)       |
 | `currency_column`         | number | Align currencies at this specific column                    | None (right-align) | `--currency-column` (`-c`) |
+| `decimal_column`          | number | Align decimal points at this specific column                | None               | N/A                        |
 | `account_amount_spacing`  | number | Minimum spaces between account names and amounts            | 2                  | N/A                        |
 | `number_currency_spacing` | number | Number of spaces between number and currency                | 1                  | N/A                        |
 
 #### Formatting Modes
 
-**Default Mode** (no `currency_column` specified):
+**Default Mode** (no `currency_column` or `decimal_column` specified):
 
 - Accounts are left-aligned
 - Numbers are right-aligned with consistent end positions
@@ -435,6 +436,11 @@ This completely disables warnings for flagged transactions.
 - Currencies are aligned at the specified column
 - Numbers are positioned to place currencies at the target column
 - Equivalent to `bean-format --currency-column N`
+
+**Decimal Column Mode** (`decimal_column` specified):
+
+- Decimal points (`.`) are aligned at the specified column
+- Numbers are positioned so their decimal points align vertically
 
 #### Examples
 

@@ -77,6 +77,91 @@ pub(super) fn generate_currency_column_edits(
     text_edits
 }
 
+/// Generates text edits for decimal column mode (aligning decimal point at fixed column)
+pub(super) fn generate_decimal_column_edits(
+    formateable_lines: &[FormatableLine],
+    decimal_col: usize,
+    doc: &crate::document::Document,
+    indent_width: Option<usize>,
+) -> Vec<lsp_types::TextEdit> {
+    let mut text_edits = Vec::new();
+
+    for line in formateable_lines {
+        // Apply custom indentation if specified, but only for postings, not top-level directives
+        let (indent_str, account_name) = if let Some(target_indent) = indent_width {
+            let account_part = line.prefix.trim_start().trim_end();
+
+            // Check if this is a top-level directive that shouldn't be indented
+            let line_start_char = doc.content.line_to_char(line.line_num);
+            let line_end_char = if line.line_num + 1 < doc.content.len_lines() {
+                doc.content.line_to_char(line.line_num + 1)
+            } else {
+                doc.content.len_chars()
+            };
+            let full_line = doc
+                .content
+                .slice(line_start_char..line_end_char)
+                .to_string();
+
+            let line_content = full_line.trim();
+            let is_top_level_directive = line_content.contains("balance ")
+                || line_content.contains("price ")
+                || (line_content.starts_with("20")
+                    && (line_content.contains(" balance ") || line_content.contains(" price ")));
+
+            if is_top_level_directive {
+                ("".to_string(), account_part)
+            } else {
+                (" ".repeat(target_indent), account_part)
+            }
+        } else {
+            // Preserve original indentation
+            let account_part = line.prefix.trim_end();
+            let original_indent = if line.prefix.len() > account_part.len() {
+                &line.prefix[..(line.prefix.len() - account_part.len())]
+            } else {
+                ""
+            };
+            (original_indent.to_string(), account_part)
+        };
+
+        // Determine pre-decimal length in line.number
+        let pre_decimal_len = match line.number.find('.') {
+            Some(dot_idx) => line.number[..dot_idx].chars().count(),
+            None => line.number.chars().count(),
+        };
+
+        let prefix_len = indent_str.chars().count() + account_name.chars().count();
+        let spaces_needed = if decimal_col >= prefix_len + pre_decimal_len {
+            decimal_col - prefix_len - pre_decimal_len
+        } else {
+            2 // minimum spacing fallback
+        };
+
+        let rest_content = line.rest.trim_start();
+        let formatted_rest = if rest_content.is_empty() {
+            String::new()
+        } else {
+            format!(" {rest_content}")
+        };
+
+        let target_line = format!(
+            "{}{}{}{}{}",
+            indent_str,
+            account_name,
+            " ".repeat(spaces_needed),
+            line.number,
+            formatted_rest
+        );
+
+        if let Some(edit) = create_line_replacement_edit(line.line_num, &target_line, doc) {
+            text_edits.push(edit);
+        }
+    }
+
+    text_edits
+}
+
 /// Generates text edits for template mode (bean-format default behavior)
 pub(super) fn generate_template_edits(
     formateable_lines: &[FormatableLine],

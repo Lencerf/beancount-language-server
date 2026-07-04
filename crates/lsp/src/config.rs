@@ -31,6 +31,9 @@ pub struct FormattingConfig {
     /// Corresponds to bean-format's --currency-column (-c) option.
     pub currency_column: Option<usize>,
 
+    /// Align decimal points at this column.
+    pub decimal_column: Option<usize>,
+
     /// Spacing between account names and amounts (default: 2).
     /// This is the minimum number of spaces between the account and the amount.
     pub account_amount_spacing: usize,
@@ -51,6 +54,7 @@ impl FormattingConfig {
             prefix_width: None,
             num_width: None,
             currency_column: None,
+            decimal_column: None,
             account_amount_spacing: 2,  // Default spacing like bean-format
             number_currency_spacing: 1, // Default 1 space between number and currency
             indent_width: None,         // Default: no indent normalization
@@ -122,6 +126,9 @@ impl Config {
             if let Some(currency_column) = formatting.currency_column {
                 self.formatting.currency_column = Some(currency_column);
             }
+            if let Some(decimal_column) = formatting.decimal_column {
+                self.formatting.decimal_column = Some(decimal_column);
+            }
             if let Some(spacing) = formatting.account_amount_spacing {
                 self.formatting.account_amount_spacing = spacing;
             }
@@ -182,6 +189,9 @@ pub struct FormattingOptions {
 
     /// Align currencies in this column.
     pub currency_column: Option<usize>,
+
+    /// Align decimal points at this column.
+    pub decimal_column: Option<usize>,
 
     /// Spacing between account names and amounts.
     pub account_amount_spacing: Option<usize>,
@@ -294,6 +304,15 @@ mod tests {
             .update(serde_json::from_str("{\"formatting\": {\"currency_column\": 80}}").unwrap())
             .unwrap();
         assert_eq!(config.formatting.currency_column, Some(80));
+    }
+
+    #[test]
+    fn test_formatting_decimal_column() {
+        let mut config = Config::new(PathBuf::new());
+        config
+            .update(serde_json::from_str("{\"formatting\": {\"decimal_column\": 60}}").unwrap())
+            .unwrap();
+        assert_eq!(config.formatting.decimal_column, Some(60));
     }
 
     #[test]
